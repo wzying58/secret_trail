@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Secret Trail">
+<meta name="theme-color" content="#161a22">
+<title>Secret Trail</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+/* VOICE: playful, a little secretive, confident
+   IDEA: a treasure hunt played on a real map
+   PICTURE: full-screen map, pulsing mystery star, ? hint pins, teal walking route
+   COLOUR and TYPE: ink #161a22, white sheet, magenta-red mystery accent, teal route; Outfit
+   LAYOUT: map behind everything, mode switch on top, bottom sheet for play / organizer */
+:root{--ink:#161a22;--paper:#fff;--muted:#6b7280;--line:#e5e7eb;--soft:#f3f4f6;--accent:#e0245e;--accent-soft:#fde8ef;--route:#0e7c86;--hint:#f59e0b}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%;margin:0}
+body{font:16px/1.45 Outfit,system-ui,-apple-system,sans-serif;color:var(--ink);overflow:hidden;background:#e8e6df}
+#map{position:fixed;inset:0}
+.leaflet-control-attribution{font-size:10px}
+.top{position:fixed;z-index:1000;top:calc(env(safe-area-inset-top) + 10px);left:10px;right:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;pointer-events:none}
+.top>*{pointer-events:auto}
+.seg{display:flex;background:var(--ink);border-radius:999px;padding:4px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.seg button{border:0;background:none;color:#fff;font:600 15px Outfit,sans-serif;padding:0 20px;min-height:40px;border-radius:999px;cursor:pointer}
+.seg button.on{background:#fff;color:var(--ink)}
+.pill{border:0;background:var(--ink);color:#fff;font:600 15px Outfit,sans-serif;padding:0 20px;min-height:48px;border-radius:999px;box-shadow:0 6px 20px rgba(0,0,0,.25);cursor:pointer}
+.banner{position:fixed;z-index:1000;top:calc(env(safe-area-inset-top) + 68px);left:10px;right:10px;max-width:520px;margin:0 auto;background:#fff7d6;border-radius:14px;padding:10px 14px;font-size:14px;box-shadow:0 6px 20px rgba(0,0,0,.15);display:flex;gap:10px;align-items:center}
+.banner[hidden]{display:none}
+.banner span{flex:1}
+.banner button{border:0;background:var(--ink);color:#fff;border-radius:10px;min-height:36px;padding:0 12px;font:600 14px Outfit,sans-serif}
+.sheet{position:fixed;z-index:1000;left:0;right:0;bottom:0;max-width:540px;margin:0 auto;background:var(--paper);border-radius:22px 22px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.2);max-height:62vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom);transition:max-height .25s ease}
+.sheet.min{max-height:150px}
+.handle{align-self:center;flex:none;width:80px;height:24px;border:0;background:none;position:relative;cursor:pointer}
+.handle::after{content:"";position:absolute;left:20px;right:20px;top:9px;height:5px;border-radius:3px;background:#d1d5db}
+#body{overflow-y:auto;padding:0 18px 18px;-webkit-overflow-scrolling:touch}
+.k{font-size:13px;color:var(--muted);font-weight:600}
+.big{font:800 clamp(34px,10vw,44px)/1.05 Outfit,sans-serif;margin:4px 0 2px;white-space:nowrap}
+.sub{color:var(--muted);font-size:14px}
+.dots{display:flex;gap:6px;margin:10px 0 4px}
+.dots i{flex:1;height:6px;border-radius:3px;background:var(--line)}
+.dots i.done{background:var(--route)}.dots i.cur{background:var(--accent)}
+.h{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:14px;background:var(--soft);margin-top:8px;cursor:pointer;border:0;width:100%;text-align:left;font:inherit;color:inherit}
+.h.found{background:var(--accent-soft)}
+.h .mk{flex:none}
+.h small{display:block;color:var(--muted);font-size:13px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.btn{min-height:44px;border:0;border-radius:12px;padding:0 16px;font:600 15px Outfit,sans-serif;background:var(--soft);color:var(--ink);cursor:pointer}
+.btn.pri{background:var(--accent);color:#fff}
+.btn.dark{background:var(--ink);color:#fff}
+.btn.danger{color:#b91c1c}
+.btn:focus-visible,.seg button:focus-visible,.pill:focus-visible,.h:focus-visible{outline:3px solid var(--route);outline-offset:2px}
+label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-top:10px}
+input,textarea{display:block;width:100%;font:16px Outfit,sans-serif;color:var(--ink);border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:4px;background:#fff}
+textarea{min-height:64px;resize:vertical}
+input:focus,textarea:focus{outline:none;border-color:var(--route)}
+.stop{border:1.5px solid var(--line);border-radius:16px;padding:12px;margin-top:14px}
+.sh{display:flex;gap:10px;align-items:center}
+.sh input{margin:0;font-weight:600}
+.hrow{display:flex;gap:8px;align-items:center;margin-top:8px}
+.hrow input{margin:0}
+.x{flex:none;width:44px;height:44px;border:0;border-radius:10px;background:var(--soft);font-size:22px;color:#b91c1c;cursor:pointer}
+.muted{color:var(--muted);font-size:14px;margin:6px 0 0}
+.mk{position:relative;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font:800 16px/1 Outfit,sans-serif;color:#fff;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.35)}
+.mk.sm{width:28px;height:28px;font-size:14px;border-width:2px}
+.mk.q{background:var(--accent);width:40px;height:40px;font-size:20px}
+.mk.hq{background:var(--hint)}
+.mk.hf{background:var(--route)}
+.mk.done{background:var(--route)}
+.mk.num{background:var(--ink)}
+.mk.me{width:20px;height:20px;background:#2563eb;border-width:3px}
+.pulse::after{content:"";position:absolute;inset:-3px;border-radius:50%;border:3px solid var(--accent);animation:pulse 1.8s ease-out infinite}
+@keyframes pulse{to{transform:scale(2.3);opacity:0}}
+@media (prefers-reduced-motion:reduce){.pulse::after{animation:none;display:none}.sheet{transition:none}}
+.dlg{position:fixed;inset:0;z-index:2000;background:rgba(10,12,18,.55);display:grid;place-items:center;padding:20px}
+.dlg[hidden]{display:none}
+.card{background:#fff;border-radius:22px;padding:24px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.card h2{font:800 30px/1.1 Outfit,sans-serif;margin:4px 0 10px;text-wrap:balance}
+.card p{margin:0 0 6px}
+.card textarea{font-size:13px;min-height:90px}
+.star{width:64px;height:64px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font:800 32px Outfit,sans-serif}
+.star.h{background:var(--hint);width:56px;height:56px;margin:0;cursor:default}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<header class="top">
+  <div class="seg" id="seg"><button id="tPlay" class="on">Play</button><button id="tEdit">Edit</button></div>
+  <button id="bShare" class="pill">Share</button>
+</header>
+
+<div id="banner" class="banner" hidden><span id="bannerTxt"></span><button id="bannerBtn" hidden></button></div>
+
+<section id="sheet" class="sheet">
+  <button id="handle" class="handle" aria-label="Expand or collapse panel"></button>
+  <div id="body"></div>
+</section>
+
+<div id="dlg" class="dlg" hidden><div class="card" id="card"></div></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+{
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const LS = {
+  get(k){ try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+const rid = () => Math.random().toString(36).slice(2, 10);
+const enc = o => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const dec = s => JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g,'+').replace(/_/g,'/')))));
+
+// Sample hunt (Central Park, New York) so the app opens ready to try. Replace it in Edit.
+const SAMPLE = {
+  id: 'sample-cp', title: 'Central Park mystery walk',
+  stops: [
+    { name: 'Bethesda Fountain', lat: 40.77358, lng: -73.97100, radius: 35,
+      reveal: 'The Angel of the Waters. Your next secret waits across the lake.',
+      hints: [
+        { lat: 40.77140, lng: -73.97305, radius: 45, text: 'Walk the long avenue of elms, past the bronze writers.' },
+        { lat: 40.77290, lng: -73.97185, radius: 40, text: 'Go down the grand stairs. Water is close.' } ] },
+    { name: 'Bow Bridge', lat: 40.77580, lng: -73.97190, radius: 30,
+      reveal: 'The most romantic bridge in the park. One more secret, higher up.',
+      hints: [ { lat: 40.77460, lng: -73.97250, radius: 40, text: 'Climb the little hill where carriages once turned around.' } ] },
+    { name: 'Belvedere Castle', lat: 40.77940, lng: -73.96910, radius: 35,
+      reveal: 'You reached the castle on the rock. Hunt complete!',
+      hints: [ { lat: 40.77730, lng: -73.97050, radius: 45, text: 'Lose yourself in the woods. Choose the paths that climb.' } ] }
+  ]
+};
+
+// ---------- state ----------
+let hunt = null, fromLink = false;
+const hm = location.hash.match(/h=([\w-]+)/);
+if (hm) { try { hunt = dec(hm[1]); fromLink = true; } catch {} }
+if (!hunt) hunt = LS.get('st-hunt') || JSON.parse(JSON.stringify(SAMPLE));
+hunt.id ||= rid();
+hunt.stops ||= [];
+let prog = LS.get('st-prog-' + hunt.id) || { stop: 0, found: {} };
+let gpsWarn = false;
+let mode = 'play', me = null, sim = false, routeInfo = null, lastFrom = null, lastKey = '', pending = null, collapsed = false;
+const hk = (i, j) => i + ':' + j;
+
+function save(){
+  if (!fromLink) LS.set('st-hunt', hunt);
+  LS.set('st-prog-' + hunt.id, prog);
+}
+
+// ---------- geometry ----------
+function dist(a, b){
+  const R = 6371000, r = x => x * Math.PI / 180;
+  const dLat = r(b.lat - a.lat), dLng = r(b.lng - a.lng);
+  const s = Math.sin(dLat/2)**2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+const fmt = m => m < 1000 ? Math.max(5, Math.round(m / 5) * 5) + ' m' : (m / 1000).toFixed(1) + ' km';
+
+// ---------- map ----------
+const map = L.map('map', { zoomControl: false }).setView([40.775, -73.971], 15);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  maxZoom: 20, subdomains: 'abcd',
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
+}).addTo(map);
+const layer = L.layerGroup().addTo(map);
+const routeLayer = L.layerGroup().addTo(map);
+let meMarker = null;
+const icon = (cls, txt, size = 34) => L.divIcon({ className: '', html: `<div class="mk ${cls}">${esc(txt)}</div>`, iconSize: [size, size], iconAnchor: [size/2, size/2] });
+
+function fitAll(){
+  const pts = [];
+  if (mode === 'play') {
+    const s = hunt.stops[prog.stop];
+    if (s) { pts.push([s.lat, s.lng]); s.hints.forEach(h => pts.push([h.lat, h.lng])); }
+    if (me) pts.push([me.lat, me.lng]);
+  } else hunt.stops.forEach(s => { pts.push([s.lat, s.lng]); s.hints.forEach(h => pts.push([h.lat, h.lng])); });
+  if (pts.length > 1) map.fitBounds(pts, { paddingTopLeft: [40, 90], paddingBottomRight: [40, collapsed ? 170 : 330], maxZoom: 17 });
+  else if (pts.length) map.setView(pts[0], 16);
+}
+
+function drawPlay(){
+  layer.clearLayers();
+  hunt.stops.forEach((s, i) => {
+    if (i < prog.stop) L.marker([s.lat, s.lng], { icon: icon('done', '✓') }).bindPopup('<b>' + esc(s.name) + '</b>').addTo(layer);
+  });
+  const s = hunt.stops[prog.stop];
+  if (!s) return;
+  s.hints.forEach((h, j) => {
+    const f = prog.found[hk(prog.stop, j)];
+    L.marker([h.lat, h.lng], { icon: icon(f ? 'hf' : 'hq', f ? '✓' : '?') })
+      .bindPopup(f ? esc(h.text) : 'Walk here to unlock this hint').addTo(layer);
+  });
+  L.circle([s.lat, s.lng], { radius: +s.radius || 30, color: '#e0245e', weight: 2, fillOpacity: .12 }).addTo(layer);
+  L.marker([s.lat, s.lng], { icon: icon('q pulse', '★', 40) }).bindPopup('Secret destination ' + (prog.stop + 1)).addTo(layer);
+}
+
+function drawEdit(){
+  layer.clearLayers(); routeLayer.clearLayers();
+  L.polyline(hunt.stops.map(s => [s.lat, s.lng]), { color: '#161a22', weight: 3, dashArray: '6 8', opacity: .6 }).addTo(layer);
+  hunt.stops.forEach((s, i) => {
+    L.circle([s.lat, s.lng], { radius: +s.radius || 30, color: '#e0245e', weight: 1, fillOpacity: .08 }).addTo(layer);
+    const m = L.marker([s.lat, s.lng], { icon: icon('num', i + 1), draggable: true }).bindPopup('<b>' + esc(s.name || 'Destination ' + (i + 1)) + '</b>').addTo(layer);
+    m.on('dragend', () => { const p = m.getLatLng(); s.lat = p.lat; s.lng = p.lng; save(); drawEdit(); });
+    s.hints.forEach((h, j) => {
+      const hm2 = L.marker([h.lat, h.lng], { icon: icon('hq sm', '?', 28), draggable: true }).bindPopup(`Hint ${j + 1} for stop ${i + 1}<br>${esc(h.text)}`).addTo(layer);
+      hm2.on('dragend', () => { const p = hm2.getLatLng(); h.lat = p.lat; h.lng = p.lng; save(); });
+    });
+  });
+}
+
+// ---------- routing (walking, OpenStreetMap) ----------
+async function getRoute(pts){
+  const coords = pts.map(p => p.lng.toFixed(6) + ',' + p.lat.toFixed(6)).join(';');
+  try {
+    const r = await fetch(`https://routing.openstreetmap.de/routed-foot/route/v1/foot/${coords}?overview=full&geometries=geojson`);
+    const j = await r.json();
+    if (j.code === 'Ok') return { line: j.routes[0].geometry.coordinates.map(c => [c[1], c[0]]), dist: j.routes[0].distance, dur: j.routes[0].duration };
+  } catch {}
+  return { line: pts.map(p => [p.lat, p.lng]), straight: true };
+}
+
+async function updateRoute(force){
+  const s = hunt.stops[prog.stop];
+  if (mode !== 'play' || !s || !me) { routeLayer.clearLayers(); routeInfo = null; return; }
+  const next = s.hints.filter((h, j) => !prog.found[hk(prog.stop, j)]);
+  const key = prog.stop + ':' + next.length;
+  if (!force && key === lastKey && lastFrom && dist(me, lastFrom) < 40) return;
+  lastKey = key; lastFrom = { ...me };
+  const r = await getRoute([me, ...next, s]);
+  if (mode !== 'play') return;
+  routeInfo = r;
+  routeLayer.clearLayers();
+  L.polyline(r.line, { color: '#ffffff', weight: 10, opacity: .9 }).addTo(routeLayer);
+  L.polyline(r.line, { color: '#0e7c86', weight: 6, opacity: .95, dashArray: r.straight ? '8 10' : null }).addTo(routeLayer);
+  render();
+}
+
+// ---------- position ----------
+function onPos(p){
+  me = p;
+  if (!meMarker) meMarker = L.marker([p.lat, p.lng], { icon: icon('me', '', 20), zIndexOffset: 1000, interactive: false }).addTo(map);
+  else meMarker.setLatLng([p.lat, p.lng]);
+  if (mode === 'play') { check(); updateRoute(false); render(); }
+}
+
+function check(){
+  const s = hunt.stops[prog.stop];
+  if (!s || !me) return;
+  s.hints.forEach((h, j) => {
+    const k = hk(prog.stop, j);
+    if (!prog.found[k] && dist(me, h) <= (+h.radius || 40)) {
+      prog.found[k] = true; save(); drawPlay();
+      dialog(`<div class="star h">?</div><div class="k" style="margin-top:12px">Hint ${j + 1} unlocked</div><h2>${esc(h.text)}</h2>`, [['Keep going', 'pri']]);
+      updateRoute(true);
+    }
+  });
+  if (dist(me, s) <= (+s.radius || 30)) {
+    const i = prog.stop;
+    prog.stop++; save(); drawPlay(); updateRoute(true);
+    const last = prog.stop >= hunt.stops.length;
+    dialog(`<div class="star">★</div><div class="k" style="margin-top:12px">Secret destination ${i + 1} found</div><h2>${esc(s.name)}</h2>${s.reveal ? '<p>' + esc(s.reveal) + '</p>' : ''}`,
+      [[last ? 'Finish' : 'Next destination', 'pri', () => fitAll()]]);
+  }
+}
+
+if (!('geolocation' in navigator)) banner('This device has no GPS access. Turn on Test mode and tap the map to move.');
+else {
+  if (location.protocol !== 'https:' && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname))
+    banner('GPS only works when the app is opened from an https:// address. Use Test mode meanwhile.');
+  navigator.geolocation.watchPosition(
+    p => { if (!sim) { const first = !me; if (gpsWarn) { gpsWarn = false; if (!pending) banner(''); } onPos({ lat: p.coords.latitude, lng: p.coords.longitude }); if (first && mode === 'play') fitAll(); } },
+    e => { if (!me && !pending) { gpsWarn = true; banner('Can’t get your location yet' + (e.message ? ' (' + e.message + ')' : '') + '. Allow location access, or turn on Test mode and tap the map to move.'); } },
+    { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 });
+}
+
+// ---------- UI helpers ----------
+function banner(txt, btn, cb){
+  $('#bannerTxt').textContent = txt;
+  const b = $('#bannerBtn');
+  b.hidden = !btn; b.textContent = btn || ''; b.onclick = cb || null;
+  $('#banner').hidden = !txt;
+}
+const queue = [];
+function dialog(html, buttons){
+  queue.push({ html, buttons });
+  if (queue.length === 1) showNext();
+}
+function showNext(){
+  const d = queue[0];
+  if (!d) { $('#dlg').hidden = true; return; }
+  $('#card').innerHTML = d.html + '<div class="row">' + d.buttons.map((b, i) => `<button class="btn ${b[1] || ''}" data-i="${i}">${esc(b[0])}</button>`).join('') + '</div>';
+  $('#dlg').hidden = false;
+  $('#card').querySelectorAll('[data-i]').forEach(el => el.onclick = () => {
+    const b = d.buttons[+el.dataset.i]; queue.shift(); showNext(); if (b[2]) b[2]();
+  });
+}
+const confirmDlg = (title, text, ok, cb) => dialog(`<h2>${esc(title)}</h2><p>${esc(text)}</p>`, [['Cancel'], [ok, 'pri', cb]]);
+
+// ---------- sheet ----------
+function render(){
+  const el = $('#body');
+  if (mode === 'edit') { el.innerHTML = editHTML(); return; }
+  const total = hunt.stops.length, s = hunt.stops[prog.stop];
+  const dots = `<div class="dots">${hunt.stops.map((x, i) => `<i class="${i < prog.stop ? 'done' : i === prog.stop ? 'cur' : ''}"></i>`).join('')}</div>`;
+  if (!total) { el.innerHTML = `<div class="k">No destinations yet</div><div class="big">Empty hunt</div><p class="sub">Switch to Edit and tap the map to hide your first secret destination.</p>`; return; }
+  if (!s) {
+    el.innerHTML = `<div class="k">${esc(hunt.title)}</div>${dots}<div class="big">Hunt complete</div>
+      <p class="sub">You found all ${total} secret destinations.</p>
+      ${hunt.stops.map((x, i) => `<button class="h found" data-act="fly" data-lat="${x.lat}" data-lng="${x.lng}"><span class="mk sm done">${i + 1}</span><span><b>${esc(x.name)}</b>${x.reveal ? '<small>' + esc(x.reveal) + '</small>' : ''}</span></button>`).join('')}
+      <div class="row"><button class="btn dark" data-act="restart">Play again</button></div>`;
+    return;
+  }
+  const d = me ? dist(me, s) : null;
+  const nf = s.hints.filter((h, j) => prog.found[hk(prog.stop, j)]).length;
+  const routeTxt = routeInfo && !routeInfo.straight ? `Walking route ${fmt(routeInfo.dist)} · about ${Math.max(1, Math.round(routeInfo.dur / 60))} min` : (me ? 'Straight-line distance' : 'Waiting for your location');
+  el.innerHTML = `<div class="k">${esc(hunt.title)} · Destination ${prog.stop + 1} of ${total}</div>${dots}
+    <div class="big">${d == null ? 'Finding you…' : fmt(d) + ' to go'}</div>
+    <div class="sub">${routeTxt} · ${nf} of ${s.hints.length} hints</div>
+    ${s.hints.map((h, j) => {
+      const f = prog.found[hk(prog.stop, j)];
+      return `<button class="h ${f ? 'found' : ''}" data-act="fly" data-lat="${h.lat}" data-lng="${h.lng}">
+        <span class="mk sm ${f ? 'hf' : 'hq'}">${f ? '✓' : '?'}</span>
+        <span>${f ? '<b>' + esc(h.text) + '</b>' : `<b>Hint ${j + 1} is locked</b><small>Reach the ? marker${me ? ' · ' + fmt(dist(me, h)) + ' away' : ''}</small>`}</span></button>`;
+    }).join('')}
+    <div class="row">
+      <button class="btn dark" data-act="me">Center on me</button>
+      <button class="btn" data-act="fit">Show route</button>
+      <button class="btn ${sim ? 'pri' : ''}" data-act="sim">Test mode: ${sim ? 'on' : 'off'}</button>
+      <button class="btn danger" data-act="restart">Restart</button>
+    </div>
+    ${sim ? '<p class="muted">Test mode: tap anywhere on the map to move yourself there.</p>' : ''}`;
+}
+
+function editHTML(){
+  return `<div class="k">Organizer · players never see this view</div>
+    <label for="f-title">Hunt title</label><input id="f-title" data-f="title" value="${esc(hunt.title)}">
+    ${hunt.stops.map((s, i) => `<div class="stop">
+      <div class="sh"><span class="mk sm num">${i + 1}</span><input id="f-name-${i}" data-s="${i}" data-f="name" placeholder="Secret name (revealed on arrival)" value="${esc(s.name)}" aria-label="Secret name"></div>
+      <label for="f-rev-${i}">Message when found</label><textarea id="f-rev-${i}" data-s="${i}" data-f="reveal">${esc(s.reveal)}</textarea>
+      <label for="f-rad-${i}">Arrival radius in metres</label><input id="f-rad-${i}" type="number" min="5" max="500" inputmode="numeric" data-s="${i}" data-f="radius" value="${esc(s.radius)}">
+      <label>Hints on the way (unlock within ~40 m of the pin)</label>
+      ${s.hints.map((h, j) => `<div class="hrow"><span class="mk sm hq">?</span><input data-s="${i}" data-h="${j}" data-f="text" value="${esc(h.text)}" placeholder="Hint text" aria-label="Hint ${j + 1}"><button class="x" data-act="delh" data-s="${i}" data-h="${j}" aria-label="Delete hint">×</button></div>`).join('') || '<p class="muted">No hints yet.</p>'}
+      <div class="row">
+        <button class="btn" data-act="addh" data-s="${i}">+ Hint (tap map)</button>
+        <button class="btn" data-act="up" data-s="${i}" aria-label="Move earlier">↑</button>
+        <button class="btn" data-act="down" data-s="${i}" aria-label="Move later">↓</button>
+        <button class="btn danger" data-act="dels" data-s="${i}">Delete</button>
+      </div></div>`).join('')}
+    <div class="row"><button class="btn pri" data-act="adds">+ Destination (tap map)</button><button class="btn" data-act="blank">Start blank</button></div>
+    <p class="muted">Drag any pin on the map to fine-tune it. Hints are routed through in order, so place them along the way.</p>`;
+}
+
+function setPending(p){
+  pending = p;
+  if (!p) { banner(''); return; }
+  banner(p.type === 'stop' ? 'Tap the map where the secret destination is.' : `Tap the map to place a hint for destination ${p.s + 1}.`, 'Cancel', () => setPending(null));
+  if (window.innerWidth < 700) setCollapsed(true);
+}
+
+function setMode(m){
+  mode = m; setPending(null);
+  $('#tPlay').classList.toggle('on', m === 'play');
+  $('#tEdit').classList.toggle('on', m === 'edit');
+  if (prog.stop > hunt.stops.length) prog.stop = hunt.stops.length;
+  if (m === 'play') { drawPlay(); lastKey = ''; updateRoute(true); } else drawEdit();
+  render(); fitAll();
+}
+function setCollapsed(c){ collapsed = c; $('#sheet').classList.toggle('min', c); }
+
+// ---------- events ----------
+$('#tPlay').onclick = () => setMode('play');
+$('#tEdit').onclick = () => setMode('edit');
+$('#handle').onclick = () => setCollapsed(!collapsed);
+
+$('#bShare').onclick = () => {
+  const url = location.href.split('#')[0] + '#h=' + enc(hunt);
+  const local = location.protocol === 'file:';
+  dialog(`<div class="k">Share with players</div><h2>Send this link</h2>
+    <p>Players open it and get Play mode only. Destination names stay hidden until they arrive.</p>
+    ${local ? '<p class="muted">You opened the app from a file. Put it online first (see instructions) so the link works on other phones.</p>' : ''}
+    <textarea id="shareUrl" readonly>${esc(url)}</textarea>
+    <p class="muted">Names are encoded in the link, not encrypted, so a determined player could decode them.</p>`,
+    [['Close'], ['Copy link', 'pri', () => { navigator.clipboard?.writeText(url).catch(() => {}); }]]);
+};
+
+$('#body').addEventListener('input', e => {
+  const t = e.target, f = t.dataset.f;
+  if (!f) return;
+  if (t.dataset.s == null) hunt[f] = t.value;
+  else if (t.dataset.h != null) hunt.stops[+t.dataset.s].hints[+t.dataset.h][f] = t.value;
+  else hunt.stops[+t.dataset.s][f] = f === 'radius' ? Math.max(5, +t.value || 30) : t.value;
+  save();
+});
+$('#body').addEventListener('change', () => { if (mode === 'edit') drawEdit(); });
+
+$('#body').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  const a = b.dataset.act, i = +b.dataset.s, j = +b.dataset.h;
+  if (a === 'fly') { map.flyTo([+b.dataset.lat, +b.dataset.lng], 18); if (window.innerWidth < 700) setCollapsed(true); }
+  else if (a === 'me') { if (me) map.flyTo([me.lat, me.lng], 17); }
+  else if (a === 'fit') fitAll();
+  else if (a === 'sim') { sim = !sim; render(); }
+  else if (a === 'restart') confirmDlg('Restart the hunt?', 'All found destinations and hints will be locked again.', 'Restart', () => { prog = { stop: 0, found: {} }; save(); drawPlay(); updateRoute(true); render(); fitAll(); });
+  else if (a === 'adds') setPending({ type: 'stop' });
+  else if (a === 'addh') setPending({ type: 'hint', s: i });
+  else if (a === 'delh') { hunt.stops[i].hints.splice(j, 1); save(); drawEdit(); render(); }
+  else if (a === 'dels') confirmDlg('Delete this destination?', `“${hunt.stops[i].name || 'Destination ' + (i + 1)}” and its hints will be removed.`, 'Delete', () => { hunt.stops.splice(i, 1); prog = { stop: 0, found: {} }; save(); drawEdit(); render(); });
+  else if (a === 'up' || a === 'down') {
+    const k = a === 'up' ? i - 1 : i + 1;
+    if (k < 0 || k >= hunt.stops.length) return;
+    [hunt.stops[i], hunt.stops[k]] = [hunt.stops[k], hunt.stops[i]];
+    prog = { stop: 0, found: {} }; save(); drawEdit(); render();
+  }
+  else if (a === 'blank') confirmDlg('Start a blank hunt?', 'This removes all current destinations and hints.', 'Start blank', () => {
+    hunt = { id: rid(), title: 'My secret hunt', stops: [] }; prog = { stop: 0, found: {} }; save(); drawEdit(); render();
+  });
+});
+
+map.on('click', e => {
+  const p = { lat: e.latlng.lat, lng: e.latlng.lng };
+  if (mode === 'edit' && pending) {
+    if (pending.type === 'stop') {
+      hunt.stops.push({ name: '', reveal: '', radius: 30, hints: [], ...p });
+      setPending(null); setCollapsed(false); save(); drawEdit(); render();
+      setTimeout(() => { const el = document.getElementById('f-name-' + (hunt.stops.length - 1)); el?.focus(); el?.scrollIntoView({ block: 'center' }); }, 50);
+    } else {
+      const s = hunt.stops[pending.s];
+      s.hints.push({ text: '', radius: 40, ...p });
+      const si = pending.s;
+      setPending(null); setCollapsed(false); save(); drawEdit(); render();
+      setTimeout(() => { const el = document.querySelector(`[data-s="${si}"][data-h="${s.hints.length - 1}"]`); el?.focus(); el?.scrollIntoView({ block: 'center' }); }, 50);
+    }
+  } else if (mode === 'play' && sim) onPos(p);
+});
+
+// ---------- start ----------
+if (fromLink) { $('#tEdit').hidden = true; $('#bShare').hidden = true; $('#seg').hidden = true; }
+setMode('play');
+}
+</script>
+</body>
+</html>
